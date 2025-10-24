@@ -1,0 +1,47 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# --- Django ---
+*.log
+*.pot
+*.pyc
+*.sqlite3
+db.sqlite3
+media/
+staticfiles/
+.env
+.env.*
+
+# --- IDEs / Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Docker ---
+*.pid
+*.seed
+*.pid.lock
+*.db
+docker-compose.override.yml
+
+# --- Tests ---
+.coverage
+htmlcov/
+pytest_cache/
+
+# --- Migrations cache ---
+**/migrations/__pycache__/
+**/migrations/*.pyc
