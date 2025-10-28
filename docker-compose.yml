@@ -1,9 +1,9 @@
 services:
-  web:
+  backend:
     build: .
+    image: zenya-backend
     container_name: zenya-backend
     command: python manage.py runserver 0.0.0.0:8000
-    #command: tail -f /dev/null
     volumes:
       - .:/app
     ports:
