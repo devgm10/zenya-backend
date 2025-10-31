@@ -174,3 +174,5 @@ class User(AbstractUser):
     def get_full_document(self):
         """Returns formatted document with type. Example: DNI: 12345678"""
         return f"{self.key_identity_document.abbreviation}: {self.document}"
+
+# Create your models here.
