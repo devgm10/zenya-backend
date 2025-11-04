@@ -4,129 +4,57 @@ from django.contrib.auth.models import AbstractUser
 
 
 class Status(models.Model):
-    """
-    Represents the operational state of system entities.
-    
-    Common states include:
-    - Active: Entity is operational and visible
-    - Inactive: Entity is temporarily disabled
-    - Deleted: Entity is soft-deleted (hidden but not removed)
-    """
-
+    """Operational state of system entities."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name_es = models.CharField(max_length=100)
-    name_en = models.CharField(max_length=100)
+    name_es = models.CharField(max_length=100, unique=True)
+    name_en = models.CharField(max_length=100, unique=True)
     abbreviation = models.CharField(max_length=10, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'core_status'
-        unique_together = [['name_es', 'name_en']]
-
-    def __str__(self):
-        return f"{self.abbreviation} - {self.name_en}"
 
 
 class Country(models.Model):
-    """
-    Represents a sovereign nation or territory.
-    
-    Used for:
-    - Associating identity documents with their issuing country
-    - Geographic classification of users
-    - International compliance and regulations
-    
-    Examples: Peru (PE), Argentina (AR), Colombia (CO)
-    """
-
+    """Represents a sovereign nation or territory."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name_es = models.CharField(max_length=100)
-    name_en = models.CharField(max_length=100)
+    name_es = models.CharField(max_length=100, unique=True)
+    name_en = models.CharField(max_length=100, unique=True)
     abbreviation = models.CharField(max_length=3, unique=True)
     iso_code = models.CharField(max_length=3, unique=True, null=True, blank=True)
     phone_code = models.CharField(max_length=5, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    key_status = models.ForeignKey(
-        Status, 
-        on_delete=models.PROTECT,
-        related_name='countries'
-    )
+    key_status = models.ForeignKey('Status', on_delete=models.PROTECT, related_name='countries')
 
     class Meta:
         db_table = 'core_country'
-        verbose_name_plural = 'Countries'
-        unique_together = [['name_es', 'name_en']]
-
-    def __str__(self):
-        return f"{self.abbreviation} - {self.name_en}"
 
 
 class IdentityDocument(models.Model):
-    """
-    Defines valid types of identity documents recognized by the system.
-    
-    Each document type is associated with a country that issues it and may have
-    specific validation rules (format, length, checksum algorithms).
-    
-    Examples:
-    - DNI (Peru): National Identity Document, 8 digits
-    - Passport (International): Alphanumeric, variable length
-    - CE (Peru): Foreign Resident Card
-    """
-
+    """Defines valid types of identity documents recognized by the system."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name_es = models.CharField(max_length=100)
     name_en = models.CharField(max_length=100)
     abbreviation = models.CharField(max_length=10, unique=True)
-    regex_pattern = models.CharField(
-        max_length=200, 
-        null=True, 
-        blank=True,
-        help_text="Regular expression to validate document format"
-    )
+    regex_pattern = models.CharField(max_length=200, null=True, blank=True)
     min_length = models.IntegerField(default=1)
     max_length = models.IntegerField(default=50)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    key_country = models.ForeignKey(
-        Country, 
-        on_delete=models.PROTECT,
-        related_name='identity_documents'
-    )
-    key_status = models.ForeignKey(
-        Status, 
-        on_delete=models.PROTECT,
-        related_name='identity_documents'
-    )
+    key_country = models.ForeignKey('Country', on_delete=models.PROTECT, related_name='identity_documents')
+    key_status = models.ForeignKey('Status', on_delete=models.PROTECT, related_name='identity_documents')
 
     class Meta:
         db_table = 'core_identity_document'
-        unique_together = [
-            ['name_es', 'name_en'],
-            ['abbreviation', 'key_country']
+        constraints = [
+            models.UniqueConstraint(fields=['abbreviation', 'key_country'], name='uq_identity_country')
         ]
-
-    def __str__(self):
-        return f"{self.abbreviation} - {self.name_en} ({self.key_country.abbreviation})"
 
 
 class User(AbstractUser):
-    """
-    Extended user model with additional authentication and identity verification.
-    
-    Inherits from Django's AbstractUser which provides:
-    - username, password, email (authentication)
-    - first_name, last_name (basic profile)
-    - is_active, is_staff, is_superuser (permissions)
-    - date_joined, last_login (audit)
-    
-    Additional fields:
-    - Identity document information for KYC/verification
-    - Failed login tracking for security
-    """
-
+    """Extended user model with identity verification."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     document = models.CharField(max_length=50)
     failed_login_attempts = models.IntegerField(default=0)
@@ -134,45 +62,70 @@ class User(AbstractUser):
     locked_until = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    key_identity_document = models.ForeignKey(
-        IdentityDocument, 
-        on_delete=models.PROTECT,
-        related_name='users',
-        null=True,
-        blank=True
-    )
-    key_status = models.ForeignKey(
-        Status,
-        on_delete=models.PROTECT,
-        related_name='users',
-        null=True,
-        blank=True
-    )
+    key_identity_document = models.ForeignKey('IdentityDocument', on_delete=models.PROTECT, related_name='users', null=True, blank=True)
+    key_status = models.ForeignKey('Status', on_delete=models.PROTECT, related_name='users', null=True, blank=True)
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email', 'document']
 
     class Meta:
         db_table = 'core_user'
-        unique_together = [['key_identity_document', 'document']]
+        constraints = [
+            models.UniqueConstraint(fields=['key_identity_document', 'document'], name='uq_user_document_type')
+        ]
 
     def set_password(self, raw_password):
-        """
-        Override to reset security flags when password is changed.
-        """
-        # Resetear intentos fallidos y bloqueos
+        """Reset security flags when password is changed."""
         self.failed_login_attempts = 0
         self.is_locked = False
         self.locked_until = None
-        
-        # Hashear el password
         super().set_password(raw_password)
 
-    def __str__(self):
-        return f"{self.username} ({self.document})"
-    
-    def get_full_document(self):
-        """Returns formatted document with type. Example: DNI: 12345678"""
-        return f"{self.key_identity_document.abbreviation}: {self.document}"
 
-# Create your models here.
+class Event(models.Model):
+    """System event catalog for auditing."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name_es = models.CharField(max_length=100, unique=True)
+    name_en = models.CharField(max_length=100, unique=True)
+    abbreviation = models.CharField(max_length=3, unique=True)
+    description = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    key_status = models.ForeignKey('Status', on_delete=models.PROTECT, related_name='events')
+
+    class Meta:
+        db_table = 'core_event'
+
+
+class Log(models.Model):
+    """Main audit log storing user actions."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    key_event = models.ForeignKey('Event', on_delete=models.CASCADE, related_name='logs')
+    key_user = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='logs')
+    key_record = models.UUIDField()
+    table_name = models.CharField(max_length=100)
+    module_name = models.CharField(max_length=100)
+    user_agent = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'core_log'
+        indexes = [
+            models.Index(fields=['-created_at']),
+            models.Index(fields=['key_record']),
+            models.Index(fields=['table_name']),
+            models.Index(fields=['key_user']),
+        ]
+
+
+class LogDetail(models.Model):
+    """Detailed field-level audit of changes."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    key_log = models.ForeignKey('Log', on_delete=models.CASCADE, related_name='details')
+    column_name = models.CharField(max_length=100)
+    old_value = models.TextField(null=True, blank=True)
+    new_value = models.TextField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'core_log_detail'
+        ordering = ['column_name']
