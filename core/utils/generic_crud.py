@@ -1,6 +1,6 @@
 """
 Generic CRUD class that can be reused for all models.
-Location: core/views/generic_crud.py
+Location: core/utils/generic_crud.py
 """
 
 from rest_framework.response import Response
@@ -8,6 +8,7 @@ from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from django.db import transaction, models
 from django.db.models import Q
+from django.db.models.deletion import ProtectedError
 from core.utils.audit_logger import AuditLogger
 import uuid
 
@@ -15,13 +16,13 @@ import uuid
 class GenericCrud:
     """
     Generic CRUD operations that can be used with any model.
-    
+
     Usage example:
-        status_crud = GenericCrud(
-            model=Status,
-            serializer_class=StatusSerializer,
-            table_name='core_status',
-            module_name='STATUS',
+        country_crud = GenericCrud(
+            model=Country,
+            serializer_class=CountrySerializer,
+            table_name='core_country',
+            module_name='COUNTRY',
             unique_fields=['name_es', 'name_en', 'abbreviation']
         )
     """
@@ -41,6 +42,7 @@ class GenericCrud:
             "data": data
         }, status=status_code)
 
+    # uniqueness validations (kept as you had)
     def _validate_unique_constraints(self, data, instance=None):
         """
         Validates automatically all unique and UniqueConstraint fields.
@@ -103,10 +105,10 @@ class GenericCrud:
         if qs.exists():
             raise ValidationError("A record with these values already exists")
 
+    # CREATE
     def create(self, request):
         """Create a new record with audit logging."""
         try:
-            # 1. Validate with serializer
             serializer = self.serializer_class(data=request.data)
             if not serializer.is_valid():
                 return self._response(
@@ -118,7 +120,7 @@ class GenericCrud:
 
             data = serializer.validated_data
 
-            # 2. Validate unique fields & constraints
+            # Validate uniqueness
             try:
                 self._validate_unique_constraints(data)
                 self._validate_custom_unique_fields(data)
@@ -130,7 +132,6 @@ class GenericCrud:
                     status.HTTP_409_CONFLICT
                 )
 
-            # 3. Create record with audit
             with transaction.atomic():
                 obj = serializer.save(id=uuid.uuid4())
 
@@ -165,6 +166,7 @@ class GenericCrud:
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    # UPDATE
     def update(self, request):
         """Updates an existing record with uniqueness validation and auditing."""
         try:
@@ -195,7 +197,7 @@ class GenericCrud:
 
             data = serializer.validated_data
 
-            # Validar unicidad
+            # Uniqueness validation
             try:
                 self._validate_unique_constraints(data, instance)
                 self._validate_custom_unique_fields(data, instance)
@@ -208,7 +210,6 @@ class GenericCrud:
                 )
 
             with transaction.atomic():
-                # Guardar cambios y auditar
                 old_data = self.serializer_class(instance).data
                 obj = serializer.save()
                 new_data = self.serializer_class(obj).data
@@ -255,5 +256,164 @@ class GenericCrud:
             return self._response(
                 True,
                 f"Error updating {self.module_name}: {str(error)}",
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # GET / LIST
+    def get(self, request, pk=None):
+        """
+        Retrieve a single record (pk provided) or list (no pk).
+        - For list: supports ?include_deleted=true to show soft-deleted records.
+        """
+        try:
+            # Single record
+            if pk:
+                instance = self.model.objects.filter(pk=pk).first()
+                if not instance:
+                    return self._response(True, f"{self.module_name} not found", status.HTTP_404_NOT_FOUND)
+                return self._response(False, "Record found", self.serializer_class(instance).data)
+
+            # List
+            include_deleted = request.query_params.get('include_deleted', 'false').lower() == 'true'
+
+            qs = self.model.objects.all()
+
+            # If model uses key_status (soft delete style), exclude typical deleted abbreviations
+            if hasattr(self.model, "key_status") and not include_deleted:
+                qs = qs.exclude(
+                    Q(key_status__abbreviation__iexact='DEL') |
+                    Q(key_status__abbreviation__iexact='DELETED') |
+                    Q(key_status__abbreviation__iexact='INACTIVE')
+                )
+
+            serializer = self.serializer_class(qs, many=True)
+            return self._response(False, "Records listed successfully", serializer.data)
+
+        except Exception as error:
+            return self._response(
+                True,
+                f"Error fetching {self.module_name}: {str(error)}",
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # DELETE (soft / hard)
+    def delete(self, request):
+        """Deletes a record, supporting both soft and hard deletion with audit logging."""
+        try:
+            record_id = request.data.get("id")
+            force_delete = bool(request.data.get("force", False))  # if true -> attempt hard delete
+
+            if not record_id:
+                return self._response(
+                    True,
+                    "Missing ID in request body",
+                    status.HTTP_400_BAD_REQUEST
+                )
+
+            instance = self.model.objects.filter(pk=record_id).first()
+            if not instance:
+                return self._response(
+                    True,
+                    f"{self.module_name} not found",
+                    status.HTTP_404_NOT_FOUND
+                )
+
+            # Model-level flags
+            allow_soft = getattr(self.model, "allow_soft_delete", False)
+            allow_hard = getattr(self.model, "allow_hard_delete", False)
+
+            if not allow_soft and not allow_hard:
+                return self._response(
+                    True,
+                    f"Deletion is not allowed for {self.module_name}.",
+                    status.HTTP_403_FORBIDDEN
+                )
+
+            with transaction.atomic():
+                delete_mode = None
+                deleted_data = self.serializer_class(instance).data
+
+                # Soft delete preferred if allowed and not forced
+                if allow_soft and not force_delete:
+                    # Require key_status on the model
+                    if not hasattr(instance, "key_status"):
+                        return self._response(
+                            True,
+                            f"{self.module_name} does not support soft deletion (missing key_status).",
+                            status.HTTP_400_BAD_REQUEST
+                        )
+
+                    # Set to INACTIVE (must exist in Status)
+                    from core.models import Status
+                    inactive_status = Status.objects.filter(abbreviation__iexact="INACTIVE").first()
+                    if not inactive_status:
+                        return self._response(
+                            True,
+                            "Inactive status not found in Status table.",
+                            status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
+
+                    instance.key_status = inactive_status
+                    instance.save(update_fields=["key_status", "updated_at"] if hasattr(instance, "updated_at") else ["key_status"])
+                    delete_mode = "soft"
+
+                # Hard delete if allowed and forced
+                elif allow_hard and force_delete:
+                    try:
+                        instance.delete()
+                        delete_mode = "hard"
+                    except ProtectedError:
+                        transaction.set_rollback(True)
+                        return self._response(
+                            True,
+                            f"{self.module_name} cannot be physically deleted because it is referenced in another module.",
+                            status.HTTP_409_CONFLICT
+                        )
+
+                else:
+                    # Cases like allow_soft=False but allow_hard=True and not forced
+                    if allow_hard and not force_delete:
+                        return self._response(
+                            True,
+                            "Hard delete requires 'force' flag set to true.",
+                            status.HTTP_400_BAD_REQUEST
+                        )
+
+                    return self._response(
+                        True,
+                        f"Invalid delete mode for {self.module_name}.",
+                        status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Audit the deletion
+                log_result = AuditLogger.log_delete(
+                    user=request.user,
+                    key_record=record_id,
+                    table_name=self.table_name,
+                    module_name=self.module_name,
+                    old_data=deleted_data,
+                    request=request
+                )
+
+                if log_result.get("is_error"):
+                    transaction.set_rollback(True)
+                    return self._response(
+                        True,
+                        f"Error registering audit: {log_result['message']}",
+                        status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
+                message = (
+                    f"{self.module_name} logically deleted (status set to INACTIVE)"
+                    if delete_mode == "soft"
+                    else f"{self.module_name} physically deleted"
+                )
+
+                return self._response(False, message, status_code=status.HTTP_200_OK)
+
+        except Exception as error:
+            return self._response(
+                True,
+                f"Error deleting {self.module_name}: {str(error)}",
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             )

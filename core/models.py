@@ -16,6 +16,20 @@ class Status(models.Model):
         db_table = 'core_status'
 
 
+class Event(models.Model):
+    """System event catalog for auditing."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name_es = models.CharField(max_length=100, unique=True)
+    name_en = models.CharField(max_length=100, unique=True)
+    abbreviation = models.CharField(max_length=3, unique=True)
+    description = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'core_event'
+
+
 class Country(models.Model):
     """Represents a sovereign nation or territory."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -63,7 +77,6 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     key_identity_document = models.ForeignKey('IdentityDocument', on_delete=models.PROTECT, related_name='users', null=True, blank=True)
-    key_status = models.ForeignKey('Status', on_delete=models.PROTECT, related_name='users', null=True, blank=True)
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email', 'document']
@@ -82,27 +95,18 @@ class User(AbstractUser):
         super().set_password(raw_password)
 
 
-class Event(models.Model):
-    """System event catalog for auditing."""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name_es = models.CharField(max_length=100, unique=True)
-    name_en = models.CharField(max_length=100, unique=True)
-    abbreviation = models.CharField(max_length=3, unique=True)
-    description = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    key_status = models.ForeignKey('Status', on_delete=models.PROTECT, related_name='events')
-
-    class Meta:
-        db_table = 'core_event'
-
-
 class Log(models.Model):
-    """Main audit log storing user actions."""
+    """Main audit log storing user and action metadata as immutable text."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    key_event = models.ForeignKey('Event', on_delete=models.CASCADE, related_name='logs')
-    key_user = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='logs')
-    key_record = models.UUIDField()
+    event_abbreviation = models.CharField(max_length=10)
+    event_name = models.CharField(max_length=100)
+    user_id = models.UUIDField(null=True, blank=True)
+    user_name = models.CharField(max_length=150, null=True, blank=True)
+    user_email = models.CharField(max_length=150, null=True, blank=True)
+    country_abbreviation = models.CharField(max_length=5, null=True, blank=True)
+    identity_document_abbreviation = models.CharField(max_length=10, null=True, blank=True)
+    document = models.CharField(max_length=50, null=True, blank=True)
+    record_id = models.UUIDField(null=True, blank=True)
     table_name = models.CharField(max_length=100)
     module_name = models.CharField(max_length=100)
     user_agent = models.TextField(null=True, blank=True)
@@ -112,9 +116,9 @@ class Log(models.Model):
         db_table = 'core_log'
         indexes = [
             models.Index(fields=['-created_at']),
-            models.Index(fields=['key_record']),
             models.Index(fields=['table_name']),
-            models.Index(fields=['key_user']),
+            models.Index(fields=['record_id']),
+            models.Index(fields=['event_abbreviation']),
         ]
 
 
