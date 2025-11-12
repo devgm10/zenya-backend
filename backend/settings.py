@@ -2,13 +2,20 @@ import os
 import dotenv
 from pathlib import Path
 from datetime import timedelta
+from django.core.exceptions import ImproperlyConfigured
 
 #Load variables from .env if exists
 dotenv.load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', '')
+SECRET_KEY = os.getenv(
+    "DJANGO_SECRET_KEY",
+    "fallback-local-secret-key" if not os.getenv("GITHUB_ACTIONS") else None
+)
+
+if not SECRET_KEY:
+    raise ImproperlyConfigured("The SECRET_KEY setting must not be empty.")
 
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
