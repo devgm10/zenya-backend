@@ -3,3 +3,6 @@ djangorestframework
 psycopg2-binary
 python-dotenv
 gunicorn
+djangorestframework-simplejwt
+django-cors-headers
+requests
