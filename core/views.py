@@ -17,6 +17,10 @@ class StatusView(APIView):
             unique_fields=['name_es', 'name_en', 'abbreviation']
         )
 
+    def get(self, request, pk=None):
+        """list of records or a specific record"""
+        return self.crud.get(request, pk)
+    
     def post(self, request):
         """Create a new status"""
         return self.crud.create(request)
@@ -38,6 +42,10 @@ class CountryView(APIView):
             module_name='COUNTRY',
             unique_fields=['name_es', 'name_en', 'abbreviation', 'iso_code', 'phone_code']
         )
+
+    def get(self, request, pk=None):
+        """list of records or a specific record"""
+        return self.crud.get(request, pk)
 
     def post(self, request):
         """Create a new country"""

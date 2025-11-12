@@ -263,7 +263,7 @@ class GenericCrud:
     def get(self, request, pk=None):
         """
         Retrieve a single record (pk provided) or list (no pk).
-        - For list: supports ?include_deleted=true to show soft-deleted records.
+        - For list: supports? include_deleted=true to show soft-deleted records.
         """
         try:
             # Single record
