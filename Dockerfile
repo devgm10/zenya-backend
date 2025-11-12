@@ -1,27 +1,27 @@
-# Imagen base
+# IBase image
 FROM python:3.12
 
-# Evitar pyc y buffering
+# Avoid pyc and buffering
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Crear directorio de la app
+# Create app directory
 WORKDIR /app
 
-# Instalar dependencias del sistema
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar requirements
+# Copy requirements
 COPY requirements.txt .
 
-# Instalar dependencias de Python
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar el proyecto
+# Copy the project
 COPY . .
 
-# Comando por defecto
+# Default command
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "backend.wsgi:application"]
