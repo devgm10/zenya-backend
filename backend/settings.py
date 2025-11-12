@@ -17,6 +17,12 @@ SECRET_KEY = os.getenv(
 if not SECRET_KEY:
     raise ImproperlyConfigured("The SECRET_KEY setting must not be empty.")
 
+ENVIRONMENT = os.getenv("DJANGO_ENV", "local")
+if ENVIRONMENT == "production":
+    DB_HOST = os.getenv("POSTGRES_HOST")
+else:
+    DB_HOST = "localhost" if os.getenv("GITHUB_ACTIONS") else "db"
+
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
@@ -94,7 +100,7 @@ DATABASES = {
         'NAME': os.getenv("POSTGRES_DB"),
         'USER': os.getenv("POSTGRES_USER"),
         'PASSWORD': os.getenv("POSTGRES_PASSWORD"),
-        'HOST': os.getenv("POSTGRES_HOST", "localhost" if os.getenv("GITHUB_ACTIONS") else "db"),
+        'HOST': DB_HOST,
         'PORT': os.getenv("POSTGRES_PORT", "5432"),
     }
 }
