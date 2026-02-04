@@ -122,7 +122,7 @@ jobs:
                     echo "Restarting ACI with latest image..."
 
                     az container restart \
-                        --resource-group rg-zenya \
+                        --resource-group rg-zenya-staging \
                         --name zenya-backend
 
                     echo "ACI restarted"
@@ -133,7 +133,7 @@ jobs:
                     echo "Running Django migrations..."
 
                     az container exec \
-                        --resource-group rg-zenya \
+                        --resource-group rg-zenya-staging \
                         --name zenya-backend \
                         --exec-command "python manage.py migrate --noinput"
 
