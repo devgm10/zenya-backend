@@ -123,7 +123,7 @@ jobs:
 
                     az container restart \
                         --resource-group rg-zenya-staging \
-                        --name zenya-backend
+                        --name aci-zenya-backend-staging
 
                     echo "ACI restarted"
 
@@ -134,7 +134,7 @@ jobs:
 
                     az container exec \
                         --resource-group rg-zenya-staging \
-                        --name zenya-backend \
+                        --name aci-zenya-backend-staging \
                         --exec-command "python manage.py migrate --noinput"
 
                     echo "Migrations applied successfully"
