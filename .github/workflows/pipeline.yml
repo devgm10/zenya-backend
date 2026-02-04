@@ -4,6 +4,9 @@ on:
     pull_request:
         branches: [master, develop]
 
+    push:
+        branches: [master]
+
 jobs:
     ci:
         name: Continuous integration
@@ -98,3 +101,40 @@ jobs:
                 run: |
                     docker stop postgres || true
                     docker rm postgres || true
+
+    
+    cd:
+        name: Continuous Deployment
+        runs-on: ubuntu-latest
+        needs: ci
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        environment: staging
+
+        steps:
+            -   name: Login to Azure
+                uses: azure/login@v1
+                with:
+                    creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+            -   name: Restart ACI with latest image
+                run: |
+                    set -e
+                    echo "Restarting ACI with latest image..."
+
+                    az container restart \
+                        --resource-group rg-zenya \
+                        --name zenya-backend
+
+                    echo "ACI restarted"
+
+            -   name: Run Django migrations inside ACI
+                run: |
+                    set -e
+                    echo "Running Django migrations..."
+
+                    az container exec \
+                        --resource-group rg-zenya \
+                        --name zenya-backend \
+                        --exec-command "python manage.py migrate --noinput"
+
+                    echo "Migrations applied successfully"
